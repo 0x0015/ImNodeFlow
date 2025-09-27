@@ -1180,8 +1180,7 @@ namespace ImFlow
          * @brief <BR>When parent gets deleted, remove the links
          */
         ~OutPin() override {
-            std::vector<std::weak_ptr<Link>> links = std::move(m_links);
-            for (auto &l: links) if (!l.expired()) l.lock()->right()->deleteLink();
+	    if(!m_link.expired()) m_link.lock()->right()->deleteLink();
         }
 
         /**
@@ -1196,6 +1195,7 @@ namespace ImFlow
          */
         void setLink(std::shared_ptr<Link>& link) override;
 
+        std::weak_ptr<Link> getLink() override { return m_link; }
         /**
          * @brief <BR>Delete any expired weak pointers to a (now deleted) link
          */
@@ -1205,7 +1205,7 @@ namespace ImFlow
          * @brief <BR>Get connected status
          * @return [TRUE] is pin is connected to one or more links
          */
-        bool isConnected() override { return !m_links.empty(); }
+        bool isConnected() override { return !m_link.expired() && m_link.lock() != nullptr; }
 
         /**
          * @brief <BR>Get pin's link attachment point (socket)
@@ -1232,7 +1232,7 @@ namespace ImFlow
          */
         [[nodiscard]] const std::type_info& getDataType() const override { return typeid(T); };
     private:
-        std::vector<std::weak_ptr<Link>> m_links;
+        std::weak_ptr<Link> m_link;
         std::function<T()> m_behaviour;
         T m_val;
     };

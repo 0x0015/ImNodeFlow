@@ -349,13 +349,19 @@ namespace ImFlow
     template<class T>
     void OutPin<T>::setLink(std::shared_ptr<Link>& link)
     {
-        m_links.emplace_back(link);
+	if(isConnected())
+		deleteLink();
+        m_link = link;
     }
 
     template<class T>
     void OutPin<T>::deleteLink()
     {
-        m_links.erase(std::remove_if(m_links.begin(), m_links.end(),
-                                     [](const std::weak_ptr<Link>& l) { return l.expired(); }), m_links.end());
+	    if(m_link.expired())
+		    m_link = {};
+	    else{
+		    m_link.lock()->right()->deleteLink();
+		    m_link = {};
+	    }
     }
 }
