@@ -778,12 +778,12 @@ namespace ImFlow
         /**
          * @brief <BR>Delete itself
          */
-        void destroy() { m_destroyed = true; }
+        void destroy() { if(!m_indestructable) m_destroyed = true; }
 
         /*
          * @brief <BR>Get if node must be deleted
          */
-        [[nodiscard]] bool toDestroy() const { return m_destroyed; }
+        [[nodiscard]] bool toDestroy() const { return m_destroyed && !m_indestructable; }
 
         /**
          * @brief <BR>Get hovered status
@@ -839,6 +839,11 @@ namespace ImFlow
          */
         [[nodiscard]] bool isDragged() const { return m_dragged; }
 
+	/**
+	 * @brief <BR>Get Indestructable status
+	 * @return [TRUE] if the node is Indestructable
+	 */
+	[[nodiscard]] bool isIndestructable() const {return m_indestructable;}
         /**
          * @brief <BR>Set node's uid
          * @param uid Node's unique identifier
@@ -870,6 +875,12 @@ namespace ImFlow
         BaseNode* setStyle(std::shared_ptr<NodeStyle> style) { m_style = std::move(style); return this; }
 
         /**
+         * @brief Set node's style
+         * @param style New style
+         */
+        BaseNode* setIndestructable(bool indestruct) { m_indestructable = indestruct; return this; }
+
+        /**
          * @brief <BR>Set selected status
          * @param state New selected state
          *
@@ -891,6 +902,7 @@ namespace ImFlow
         bool m_selected = false, m_selectedNext = false;
         bool m_dragged = false;
         bool m_destroyed = false;
+	bool m_indestructable = false;
 
         std::vector<std::shared_ptr<Pin>> m_ins;
         std::vector<std::pair<int, std::shared_ptr<Pin>>> m_dynamicIns;
