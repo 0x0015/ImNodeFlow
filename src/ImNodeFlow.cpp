@@ -42,7 +42,7 @@ namespace ImFlow {
         ImVec2 paddingTL = {m_style->padding.x, m_style->padding.y};
         ImVec2 paddingBR = {m_style->padding.z, m_style->padding.w};
         return ImGui::IsMouseHoveringRect(m_inf->grid2screen(m_pos - paddingTL),
-                                          m_inf->grid2screen(m_pos + m_size + paddingBR));
+                                          m_inf->grid2screen(m_pos + m_size + paddingBR)) && !m_inf->getDisabled();
     }
 
     void BaseNode::update() {
@@ -171,11 +171,11 @@ namespace ImFlow {
             }
         }
 
-        if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Delete) && !ImGui::IsAnyItemActive() && isSelected())
+        if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Delete) && !ImGui::IsAnyItemActive() && isSelected() && !m_inf->getDisabled())
             destroy();
 
         bool onHeader = ImGui::IsMouseHoveringRect(offset + m_pos - paddingTL, offset + m_pos + headerSize);
-        if (onHeader && mouseClickState) {
+        if (onHeader && mouseClickState && !m_inf->getDisabled()) {
             m_inf->consumeSingleUseClick();
             m_dragged = true;
             m_inf->draggingNode(true);
@@ -239,16 +239,25 @@ namespace ImFlow {
         m_links.push_back(link);
     }
 
-    void ImNodeFlow::update() {
+    void ImNodeFlow::update(bool disabled) {
         // Updating looping stuff
         m_hovering = nullptr;
         m_hoveredNode = nullptr;
         m_draggingNode = m_draggingNodeNext;
         m_singleUseClick = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+	m_disabled = disabled;
 
         // Create child canvas
         m_context.begin();
         ImGui::GetIO().IniFilename = nullptr;
+	
+	//if disabled draw a transparent input-blocking window over the entire thing.  This blocks most input, though doesn't seem to block node dragging/selection
+	if(m_disabled){
+		ImGui::SetNextWindowPos({0, 0});
+		ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+		ImGui::Begin("##ImNodeFlowInputBlocker", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove);
+		ImGui::End();
+	}
 
         ImDrawList *draw_list = ImGui::GetWindowDrawList();
 
@@ -297,7 +306,7 @@ namespace ImFlow {
         }
 
         // Links drag-out
-        if (!m_draggingNode && m_hovering && !m_dragOut && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        if (!m_draggingNode && m_hovering && !m_dragOut && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !m_disabled)
             m_dragOut = m_hovering;
         if (m_dragOut) {
             if (m_dragOut->getType() == PinType_Output)

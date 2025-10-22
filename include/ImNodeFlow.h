@@ -295,7 +295,7 @@ namespace ImFlow
          * @brief <BR>Handler loop
          * @details Main update function. Refreshes all the logic and draws everything. Must be called every frame.
          */
-        void update();
+        void update(bool disabled = false /*input is disabled*/);
 
         /**
          * @brief <BR>Add a node to the grid
@@ -508,6 +508,8 @@ namespace ImFlow
          * @return Reference to blacklist
          */
         std::vector<std::string>& get_recursion_blacklist() { return m_pinRecursionBlacklist; }
+
+	bool& getDisabled(){return m_disabled;}
     private:
         std::string m_name;
         ContainedContext m_context;
@@ -528,6 +530,7 @@ namespace ImFlow
         bool m_draggingNode = false, m_draggingNodeNext = false;
         Pin* m_hovering = nullptr;
         Pin* m_dragOut = nullptr;
+	bool m_disabled = false;
 
         InfStyler m_style;
     };
