@@ -1,4 +1,5 @@
 #include "ImNodeFlow.h"
+#include <algorithm>
 
 namespace ImFlow {
     // -----------------------------------------------------------------------------------------------------------------
@@ -28,11 +29,11 @@ namespace ImFlow {
         smart_bezier(start, end, m_left->getStyle()->color, thickness);
 
         if (m_selected && ImGui::IsKeyPressed(ImGuiKey_Delete, false))
-            m_right->deleteLink();
+            m_right->deleteLink(this);
     }
 
     Link::~Link() {
-        m_left->deleteLink();
+        m_left->deleteLink(this);
     }
 
     // -----------------------------------------------------------------------------------------------------------------

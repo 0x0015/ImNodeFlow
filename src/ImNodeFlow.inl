@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ImNodeFlow.h"
+#include "imgui_bezier_math.h"
 
 namespace ImFlow
 {
@@ -67,17 +68,17 @@ namespace ImFlow
     // BASE NODE
 
     template<typename T>
-    std::shared_ptr<InPin<T>> BaseNode::addIN(const std::string& name, T defReturn, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style)
+    std::shared_ptr<InPin<T>> BaseNode::addIN(const std::string& name, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style)
     {
-        return addIN_uid(name, name, defReturn, std::move(filter), std::move(style));
+        return addIN_uid<T>(name, name, std::move(filter), std::move(style));
     }
 
     template<typename T, typename U>
-    std::shared_ptr<InPin<T>> BaseNode::addIN_uid(const U& uid, const std::string& name, T defReturn, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style)
+    std::shared_ptr<InPin<T>> BaseNode::addIN_uid(const U& uid, const std::string& name, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style)
     {
         PinUID h = std::hash<U>{}(uid);
-        auto p = std::make_shared<InPin<T>>(h, name, defReturn, std::move(filter), std::move(style), this, &m_inf);
-        m_ins.emplace_back(p);
+        auto p = std::make_shared<InPin<T>>(h, name, std::move(filter), std::move(style), this, &m_inf);
+        m_ins.push_back(p);
         return p;
     }
 
@@ -101,13 +102,13 @@ namespace ImFlow
     }
 
     template<typename T>
-    const T& BaseNode::showIN(const std::string& name, T defReturn, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style)
+    const T& BaseNode::showIN(const std::string& name, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style)
     {
-        return showIN_uid(name, name, defReturn, std::move(filter), std::move(style));
+        return showIN_uid<T>(name, name, std::move(filter), std::move(style));
     }
 
     template<typename T, typename U>
-    const T& BaseNode::showIN_uid(const U& uid, const std::string& name, T defReturn, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style)
+    const T& BaseNode::showIN_uid(const U& uid, const std::string& name, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style)
     {
         PinUID h = std::hash<U>{}(uid);
         for (std::pair<int, std::shared_ptr<Pin>>& p : m_dynamicIns)
@@ -119,7 +120,7 @@ namespace ImFlow
             }
         }
 
-        m_dynamicIns.emplace_back(std::make_pair(1, std::make_shared<InPin<T>>(h, name, defReturn, std::move(filter), std::move(style), this, &m_inf)));
+        m_dynamicIns.emplace_back(std::make_pair(1, std::make_shared<InPin<T>>(h, name, std::move(filter), std::move(style), this, &m_inf)));
         return static_cast<InPin<T>*>(m_dynamicIns.back().second.get())->val();
     }
 
@@ -158,13 +159,13 @@ namespace ImFlow
     }
 
     template<typename T>
-    void BaseNode::showOUT(const std::string& name, std::function<T()> behaviour, std::shared_ptr<PinStyle> style)
+    void BaseNode::showOUT(const std::string& name, std::shared_ptr<PinStyle> style)
     {
-        showOUT_uid<T>(name, name, std::move(behaviour), std::move(style));
+        showOUT_uid<T>(name, name, std::move(style));
     }
 
     template<typename T, typename U>
-    void BaseNode::showOUT_uid(const U& uid, const std::string& name, std::function<T()> behaviour, std::shared_ptr<PinStyle> style)
+    void BaseNode::showOUT_uid(const U& uid, const std::string& name, std::shared_ptr<PinStyle> style)
     {
         PinUID h = std::hash<U>{}(uid);
         for (std::pair<int, std::shared_ptr<Pin>>& p : m_dynamicOuts)
@@ -172,36 +173,18 @@ namespace ImFlow
             if (p.second->getUid() == h)
             {
                 p.first = 2;
-                static_cast<OutPin<T>*>(m_dynamicOuts.back().second.get())->behaviour(std::move(behaviour));
                 return;
             }
         }
 
         m_dynamicOuts.emplace_back(std::make_pair(2, std::make_shared<OutPin<T>>(h, name, std::move(style), this, &m_inf)));
-        static_cast<OutPin<T>*>(m_dynamicOuts.back().second.get())->behaviour(std::move(behaviour));
-    }
-
-    template<typename T, typename U>
-    const T& BaseNode::getInVal(const U& uid)
-    {
-        PinUID h = std::hash<U>{}(uid);
-        auto it = std::find_if(m_ins.begin(), m_ins.end(), [&h](std::shared_ptr<Pin>& p)
-                            { return p->getUid() == h; });
-        assert(it != m_ins.end() && "Pin UID not found!");
-        return static_cast<InPin<T>*>(it->get())->val();
-    }
-
-    template<typename T>
-    const T& BaseNode::getInVal(const char* uid)
-    {
-        return getInVal<T, std::string>(uid);
     }
 
     template<typename U>
     Pin* BaseNode::inPin(const U& uid)
     {
         PinUID h = std::hash<U>{}(uid);
-        auto it = std::find_if(m_ins.begin(), m_ins.end(), [&h](std::shared_ptr<Pin>& p)
+        auto it = std::ranges::find_if(m_ins, [&h](std::shared_ptr<Pin>& p)
                             { return p->getUid() == h; });
         assert(it != m_ins.end() && "Pin UID not found!");
         return it->get();
@@ -216,7 +199,7 @@ namespace ImFlow
     Pin* BaseNode::outPin(const U& uid)
     {
         PinUID h = std::hash<U>{}(uid);
-        auto it = std::find_if(m_outs.begin(), m_outs.end(), [&h](std::shared_ptr<Pin>& p)
+        auto it = std::ranges::find_if(m_outs, [&h](std::shared_ptr<Pin>& p)
                             { return p->getUid() == h; });
         assert(it != m_outs.end() && "Pin UID not found!");
         return it->get();
@@ -290,15 +273,6 @@ namespace ImFlow
     // IN PIN
 
     template<class T>
-    const T& InPin<T>::val()
-    {
-        if(!m_link)
-            return m_emptyVal;
-
-        return reinterpret_cast<OutPin<T>*>(m_link->left())->val();
-    }
-
-    template<class T>
     void InPin<T>::createLink(Pin *other)
     {
         if (other == this || other->getType() == PinType_Input)
@@ -307,35 +281,23 @@ namespace ImFlow
         if (m_parent == other->getParent() && !m_allowSelfConnection)
             return;
 
-        if (m_link && m_link->left() == other)
-        {
-            m_link.reset();
-            return;
-        }
+	for(auto& m_link : m_links){
+		if (m_link && m_link->left() == other){
+        	    return;
+        	}
+	}
 
         if (!m_filter(other, this)) // Check Filter
             return;
 
-        m_link = std::make_shared<Link>(other, this, (*m_inf));
-        other->setLink(m_link);
+        auto m_link = std::make_shared<Link>(other, this, (*m_inf));
+	m_links.push_back(m_link);
+        other->addLink(m_link);
         (*m_inf)->addLink(m_link);
     }
 
     // -----------------------------------------------------------------------------------------------------------------
     // OUT PIN
-
-    template<class T>
-    const T &OutPin<T>::val()
-    {
-        std::string s = std::to_string(m_uid) + std::to_string(m_parent->getUID());
-        if (std::find((*m_inf)->get_recursion_blacklist().begin(), (*m_inf)->get_recursion_blacklist().end(), s) == (*m_inf)->get_recursion_blacklist().end())
-        {
-            (*m_inf)->get_recursion_blacklist().emplace_back(s);
-            m_val = m_behaviour();
-        }
-
-        return m_val;
-    }
 
     template<class T>
     void OutPin<T>::createLink(ImFlow::Pin *other)
@@ -347,21 +309,38 @@ namespace ImFlow
     }
 
     template<class T>
-    void OutPin<T>::setLink(std::shared_ptr<Link>& link)
+    void OutPin<T>::addLink(std::shared_ptr<Link>& link)
     {
-	if(isConnected())
-		deleteLink();
-        m_link = link;
+	m_links.push_back(link);
     }
 
     template<class T>
-    void OutPin<T>::deleteLink()
+    void OutPin<T>::deleteLinks()
     {
-	    if(m_link.expired())
-		    m_link = {};
-	    else{
-		    m_link.lock()->right()->deleteLink();
-		    m_link = {};
+	    for(auto& m_link : m_links){
+		    if(m_link.expired())
+			    m_link = {};
+		    else{
+			    m_link.lock()->right()->deleteLink(m_link.lock().get());
+			    m_link = {};
+	    	}
+	    }
+	    m_links.clear();
+    }
+
+    template<class T>
+    void OutPin<T>::deleteLink(const Link* link)
+    {
+	    for(unsigned int i=0;i<m_links.size();i++){
+		    auto& m_link = m_links[i];
+		    if(m_link.expired()){
+			    m_links.erase(m_links.begin() + i);
+			    i--;
+		    }else if(m_link.lock().get() == link){
+			    m_link.lock()->right()->deleteLink(m_link.lock().get());
+			    m_links.erase(m_links.begin() + i);
+			    i--;
+		    }
 	    }
     }
 }

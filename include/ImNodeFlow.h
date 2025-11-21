@@ -2,17 +2,13 @@
 #define IM_NODE_FLOW
 #pragma once
 
-#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
-#include <cmath>
 #include <memory>
-#include <algorithm>
 #include <functional>
 #include <unordered_map>
 #include <imgui.h>
-#include "../src/imgui_bezier_math.h"
 #include "../src/context_wrapper.h"
 
 //#define ConnectionFilter_None       [](ImFlow::Pin* out, ImFlow::Pin* in){ return true; }
@@ -568,13 +564,12 @@ namespace ImFlow
          *          <BR> <BR> The UID must be unique only in the context of the current node's inputs.
          * @tparam T Type of the data the pin will handle
          * @param name Name of the pin
-         * @param defReturn Default return value when the pin is not connected
          * @param filter Connection filter
          * @param style Style of the pin
          * @return Shared pointer to the newly added pin
          */
         template<typename T>
-        std::shared_ptr<InPin<T>> addIN(const std::string& name, T defReturn, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style = nullptr);
+        std::shared_ptr<InPin<T>> addIN(const std::string& name, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style = nullptr);
 
         /**
          * @brief <BR>Add an Input to the node
@@ -584,13 +579,12 @@ namespace ImFlow
          * @tparam U Type of the UID
          * @param uid Unique identifier of the pin
          * @param name Name of the pin
-         * @param defReturn Default return value when the pin is not connected
          * @param filter Connection filter
          * @param style Style of the pin
          * @return Shared pointer to the newly added pin
          */
         template<typename T, typename U>
-        std::shared_ptr<InPin<T>> addIN_uid(const U& uid, const std::string& name, T defReturn, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style = nullptr);
+        std::shared_ptr<InPin<T>> addIN_uid(const U& uid, const std::string& name, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style = nullptr);
 
         /**
          * @brief <BR>Remove input pin
@@ -614,13 +608,12 @@ namespace ImFlow
          *          <BR> <BR> The UID must be unique only in the context of the current node's inputs.
          * @tparam T Type of the data the pin will handle
          * @param name Name of the pin
-         * @param defReturn Default return value when the pin is not connected
          * @param filter Connection filter
          * @param style Style of the pin
          * @return Const reference to the value of the connected link for the current frame of defReturn
          */
         template<typename T>
-        const T& showIN(const std::string& name, T defReturn, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style = nullptr);
+        const T& showIN(const std::string& name, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style = nullptr);
 
         /**
          * @brief <BR>Show a temporary input pin
@@ -631,13 +624,12 @@ namespace ImFlow
          * @tparam U Type of the UID
          * @param uid Unique identifier of the pin
          * @param name Name of the pin
-         * @param defReturn Default return value when the pin is not connected
          * @param filter Connection filter
          * @param style Style of the pin
          * @return Const reference to the value of the connected link for the current frame of defReturn
          */
         template<typename T, typename U>
-        const T& showIN_uid(const U& uid, const std::string& name, T defReturn, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style = nullptr);
+        const T& showIN_uid(const U& uid, const std::string& name, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style = nullptr);
 
         /**
          * @brief <BR>Add an Output to the node
@@ -690,12 +682,11 @@ namespace ImFlow
          *          <BR> <BR> The UID must be unique only in the context of the current node's outputs.
          * @tparam T Type of the data the pin will handle
          * @param name Name of the pin
-         * @param behaviour Function or lambda expression used to calculate output value
          * @param filter Connection filter
          * @param style Style of the pin
          */
         template<typename T>
-        void showOUT(const std::string& name, std::function<T()> behaviour, std::shared_ptr<PinStyle> style = nullptr);
+        void showOUT(const std::string& name, std::shared_ptr<PinStyle> style = nullptr);
 
         /**
          * @brief <BR>Show a temporary output pin
@@ -706,33 +697,11 @@ namespace ImFlow
          * @tparam U Type of the UID
          * @param uid Unique identifier of the pin
          * @param name Name of the pin
-         * @param behaviour Function or lambda expression used to calculate output value
          * @param filter Connection filter
          * @param style Style of the pin
          */
         template<typename T, typename U>
-        void showOUT_uid(const U& uid, const std::string& name, std::function<T()> behaviour, std::shared_ptr<PinStyle> style = nullptr);
-
-        /**
-         * @brief <BR>Get Input value from an InPin
-         * @details Get a reference to the value of an input pin, the value is stored in the output pin at the other end of the link.
-         * @tparam T Data type
-         * @tparam U Type of the UID
-         * @param uid Unique identifier of the pin
-         * @return Const reference to the value
-         */
-        template<typename T, typename U>
-        const T& getInVal(const U& uid);
-
-        /**
-         * @brief <BR>Get Input value from an InPin
-         * @details Get a reference to the value of an input pin, the value is stored in the output pin at the other end of the link.
-         * @tparam T Data type
-         * @param uid Unique identifier of the pin
-         * @return Const reference to the value
-         */
-        template<typename T>
-        const T& getInVal(const char* uid);
+        void showOUT_uid(const U& uid, const std::string& name, std::shared_ptr<PinStyle> style = nullptr);
 
         /**
          * @brief <BR>Get generic reference to input pin
@@ -986,12 +955,13 @@ namespace ImFlow
          * @brief <BR>Set the reference to a link
          * @param link Smart pointer to the link
          */
-        virtual void setLink(std::shared_ptr<Link>& link) {}
+        virtual void addLink([[maybe_unused]] std::shared_ptr<Link>& link) {}
 
         /**
          * @brief <BR>Delete link reference
          */
-        virtual void deleteLink() = 0;
+        virtual void deleteLinks() = 0;
+	virtual void deleteLink(const Link* link) = 0;
 
         /**
          * @brief <BR>Get connected status
@@ -1003,7 +973,7 @@ namespace ImFlow
          * @brief <BR>Get pin's link
          * @return Weak_ptr reference to pin's link
          */
-        virtual std::weak_ptr<Link> getLink() { return std::weak_ptr<Link>{}; }
+        virtual std::vector<std::weak_ptr<Link>> getLinks() { return {}; }
 
         /**
          * @brief <BR>Get pin's UID
@@ -1088,9 +1058,9 @@ namespace ImFlow
     class ConnectionFilter
     {
     public:
-        static std::function<bool(Pin*, Pin*)> None() { return [](Pin* out, Pin* in){ return true; }; }
+        static std::function<bool(Pin*, Pin*)> None() { return []([[maybe_unused]] Pin* out, [[maybe_unused]] Pin* in){ return true; }; }
         static std::function<bool(Pin*, Pin*)> SameType() { return [](Pin* out, Pin* in) { return out->getDataType() == in->getDataType(); }; }
-        static std::function<bool(Pin*, Pin*)> Numbers() { return [](Pin* out, Pin* in){ return out->getDataType() == typeid(double) || out->getDataType() == typeid(float) || out->getDataType() == typeid(int); }; }
+        static std::function<bool(Pin*, Pin*)> Numbers() { return [](Pin* out, [[maybe_unused]] Pin* in){ return out->getDataType() == typeid(double) || out->getDataType() == typeid(float) || out->getDataType() == typeid(int); }; }
     };
 
     /**
@@ -1106,12 +1076,11 @@ namespace ImFlow
          * @param name Name of the pin
          * @param filter Connection filter
          * @param parent Pointer to the Node containing the pin
-         * @param defReturn Default return value when the pin is not connected
          * @param inf Pointer to the Grid Handler the pin is in (same as parent)
          * @param style Style of the pin
          */
-        explicit InPin(PinUID uid, const std::string& name, T defReturn, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style, BaseNode* parent, ImNodeFlow** inf)
-            : Pin(uid, name, style, PinType_Input, parent, inf), m_emptyVal(defReturn), m_filter(std::move(filter)) {}
+        explicit InPin(PinUID uid, const std::string& name, std::function<bool(Pin*, Pin*)> filter, std::shared_ptr<PinStyle> style, BaseNode* parent, ImNodeFlow** inf)
+            : Pin(uid, name, style, PinType_Input, parent, inf), m_filter(std::move(filter)) {}
 
         /**
          * @brief <BR>Create link between pins
@@ -1122,7 +1091,11 @@ namespace ImFlow
         /**
         * @brief <BR>Delete the link connected to the pin
         */
-        void deleteLink() override { m_link.reset(); }
+        void deleteLinks() override { m_links = {}; }
+
+	void deleteLink(const Link* link) override{
+		std::erase_if(m_links, [&](const auto& m_link){return m_link.get() == link;});
+	}
 
         /**
          * @brief Specify if connections from an output on the same node are allowed
@@ -1134,13 +1107,18 @@ namespace ImFlow
          * @brief <BR>Get connected status
          * @return [TRUE] is pin is connected to a link
          */
-        bool isConnected() override { return m_link != nullptr; }
+        bool isConnected() override { return !m_links.empty(); }
 
         /**
          * @brief <BR>Get pin's link
          * @return Weak_ptr reference to the link connected to the pin
          */
-        std::weak_ptr<Link> getLink() override { return m_link; }
+        std::vector<std::weak_ptr<Link>> getLinks() override {
+		std::vector<std::weak_ptr<Link>> output(m_links.size());
+		for(unsigned int i=0;i<m_links.size();i++)
+			output[i] = m_links[i];
+		return output;
+	}
 
         /**
          * @brief <BR>Get InPin's connection filter
@@ -1160,14 +1138,8 @@ namespace ImFlow
          */
         ImVec2 pinPoint() override { return m_pos + ImVec2(-m_style->extra.socket_padding, m_size.y / 2); }
 
-        /**
-         * @brief <BR>Get value carried by the connected link
-         * @return Reference to the value of the connected OutPin. Or the default value if not connected
-         */
-        const T& val();
     private:
-        std::shared_ptr<Link> m_link;
-        T m_emptyVal;
+	std::vector<std::shared_ptr<Link>> m_links;
         std::function<bool(Pin*, Pin*)> m_filter;
         bool m_allowSelfConnection = false;
     };
@@ -1195,7 +1167,8 @@ namespace ImFlow
          * @brief <BR>When parent gets deleted, remove the links
          */
         ~OutPin() override {
-	    if(!m_link.expired()) m_link.lock()->right()->deleteLink();
+	    for(auto& m_link : m_links)
+		    if(!m_link.expired()) m_link.lock()->right()->deleteLink(m_link.lock().get());
         }
 
         /**
@@ -1208,19 +1181,25 @@ namespace ImFlow
          * @brief <BR>Add a connected link to the internal list
          * @param link Pointer to the link
          */
-        void setLink(std::shared_ptr<Link>& link) override;
+        void addLink(std::shared_ptr<Link>& link) override;//should only be called from this side (out pin), never in
 
-        std::weak_ptr<Link> getLink() override { return m_link; }
+	std::vector<std::weak_ptr<Link>> getLinks() override { return m_links; }
         /**
          * @brief <BR>Delete any expired weak pointers to a (now deleted) link
          */
-        void deleteLink() override;
+        void deleteLinks() override;
+	void deleteLink(const Link* link) override;
 
         /**
          * @brief <BR>Get connected status
          * @return [TRUE] is pin is connected to one or more links
          */
-        bool isConnected() override { return !m_link.expired() && m_link.lock() != nullptr; }
+        bool isConnected() override {//check if any of the links are not expired
+		for(const auto& m_link : m_links)
+			if(!m_link.expired() && m_link.lock() != nullptr)
+				return true;
+		return false;
+	}
 
         /**
          * @brief <BR>Get pin's link attachment point (socket)
@@ -1229,27 +1208,12 @@ namespace ImFlow
         ImVec2 pinPoint() override { return m_pos + ImVec2(m_size.x + m_style->extra.socket_padding, m_size.y / 2); }
 
         /**
-         * @brief <BR>Get output value
-         * @return Const reference to the internal value of the pin
-         */
-        const T& val();
-
-        /**
-         * @brief <BR>Set logic to calculate output value
-         * @details Used to define the pin behaviour. This is what gets the data from the parent's inputs, and applies the needed logic.
-         * @param func Function or lambda expression used to calculate output value
-         */
-        OutPin<T>* behaviour(std::function<T()> func) { m_behaviour = std::move(func); return this; }
-
-        /**
          * @brief <BR>Get pin's data type (aka: \<T>)
          * @return String containing unique information identifying the data type
          */
         [[nodiscard]] const std::type_info& getDataType() const override { return typeid(T); };
     private:
-        std::weak_ptr<Link> m_link;
-        std::function<T()> m_behaviour;
-        T m_val;
+	std::vector<std::weak_ptr<Link>> m_links;
     };
 }
 
