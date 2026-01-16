@@ -49,6 +49,10 @@ namespace ImFlow
         auto uid = reinterpret_cast<uintptr_t>(n.get());
         n->setUID(uid);
         m_nodes[uid] = n;
+	
+	if(onNodeCreateHook)
+		onNodeCreateHook(n);
+
         return n;
     }
 
@@ -294,6 +298,9 @@ namespace ImFlow
 	m_links.push_back(m_link);
         other->addLink(m_link);
         (*m_inf)->addLink(m_link);
+
+	if((*m_inf)->onLinkCreateHook)
+		(*m_inf)->onLinkCreateHook(m_link);
     }
 
     // -----------------------------------------------------------------------------------------------------------------

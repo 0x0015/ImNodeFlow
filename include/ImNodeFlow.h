@@ -223,7 +223,7 @@ namespace ImFlow
          * @return [TRUE] If the link is selected in the current frame
          */
         [[nodiscard]] bool isSelected() const { return m_selected; }
-    private:
+    
         Pin* m_left;
         Pin* m_right;
         ImNodeFlow* m_inf;
@@ -266,7 +266,7 @@ namespace ImFlow
      */
     class ImNodeFlow
     {
-    private:
+    
         static int m_instances;
     public:
         /**
@@ -293,6 +293,8 @@ namespace ImFlow
          */
         void update(bool disabled = false /*input is disabled*/);
 
+	void destroyDestroyedNodes();
+
         /**
          * @brief <BR>Add a node to the grid
          * @tparam T Derived class of <BaseNode> to be added
@@ -305,6 +307,11 @@ namespace ImFlow
          */
         template<typename T, typename... Params>
         std::shared_ptr<T> addNode(const ImVec2& pos, Params&&... args);
+
+	std::function<void(std::shared_ptr<BaseNode>)> onNodeCreateHook = {};
+	std::function<void(const BaseNode*)> onNodeDestroyHook = {};
+	std::function<void(std::shared_ptr<Link>)> onLinkCreateHook = {};
+	std::function<void(const Link*)> onLinkDestroyHook = {};
 
     private:
         /**
@@ -396,7 +403,7 @@ namespace ImFlow
          * @brief <BR>Get editor's name
          * @return Const reference to editor's name
          */
-        const std::string& getName() { return m_name; }
+        const std::string& getName() const { return m_name; }
 
         /**
          * @brief <BR>Get editor's position
@@ -506,7 +513,7 @@ namespace ImFlow
         std::vector<std::string>& get_recursion_blacklist() { return m_pinRecursionBlacklist; }
 
 	bool& getDisabled(){return m_disabled;}
-    private:
+    
         std::string m_name;
         ContainedContext m_context;
 
@@ -750,7 +757,12 @@ namespace ImFlow
         /**
          * @brief <BR>Delete itself
          */
-        void destroy() { if(!m_indestructable) m_destroyed = true; }
+        void destroy(){
+		if(m_indestructable) return;
+		m_destroyed = true;
+		if(m_inf->onNodeDestroyHook)
+			m_inf->onNodeDestroyHook(this);
+	}
 
         /*
          * @brief <BR>Get if node must be deleted
@@ -773,19 +785,19 @@ namespace ImFlow
          * @brief <BR>Get node name
          * @return Const reference to the node's name
          */
-        const std::string& getName() { return m_title; }
+        const std::string& getName() const { return m_title; }
 
         /**
          * @brief <BR>Get node size
          * @return Const reference to the node's size
          */
-        const ImVec2& getSize() { return  m_size; }
+        const ImVec2& getSize() const{ return  m_size; }
 
         /**
          * @brief <BR>Get node position
          * @return Const reference to the node's position
          */
-        const ImVec2& getPos() { return  m_pos; }
+        const ImVec2& getPos()  const{ return  m_pos; }
 
         /**
          * @brief <BR>Get grid handler bound to node
@@ -864,7 +876,7 @@ namespace ImFlow
          * @brief <BR>Update the isSelected status of the node
          */
         void updatePublicStatus() { m_selected = m_selectedNext; }
-    private:
+    
         NodeUID m_uid = 0;
         std::string m_title;
         ImVec2 m_pos, m_posTarget;
@@ -985,19 +997,19 @@ namespace ImFlow
          * @brief <BR>Get pin's name
          * @return Const reference to pin's name
          */
-        const std::string& getName() { return m_name; }
+        const std::string& getName() const { return m_name; }
 
         /**
          * @brief <BR>Get pin's position
          * @return Const reference to pin's position in grid coordinates
          */
-        [[nodiscard]] const ImVec2& getPos() { return m_pos; }
+        [[nodiscard]] const ImVec2& getPos() const{ return m_pos; }
 
         /**
          * @brief <BR>Get pin's hit-box size
          * @return Const reference to pin's hit-box size
          */
-        [[nodiscard]] const ImVec2& getSize() { return m_size; }
+        [[nodiscard]] const ImVec2& getSize() const{ return m_size; }
 
         /**
          * @brief <BR>Get pin's parent node
@@ -1094,6 +1106,11 @@ namespace ImFlow
         void deleteLinks() override { m_links = {}; }
 
 	void deleteLink(const Link* link) override{
+		for(const auto& l : m_links){
+			if(l.get() == link)
+				if((*m_inf)->onLinkDestroyHook)
+					(*m_inf)->onLinkDestroyHook(l.get());
+		}
 		std::erase_if(m_links, [&](const auto& m_link){return m_link.get() == link;});
 	}
 
@@ -1138,7 +1155,7 @@ namespace ImFlow
          */
         ImVec2 pinPoint() override { return m_pos + ImVec2(-m_style->extra.socket_padding, m_size.y / 2); }
 
-    private:
+    
 	std::vector<std::shared_ptr<Link>> m_links;
         std::function<bool(Pin*, Pin*)> m_filter;
         bool m_allowSelfConnection = false;
@@ -1212,7 +1229,7 @@ namespace ImFlow
          * @return String containing unique information identifying the data type
          */
         [[nodiscard]] const std::type_info& getDataType() const override { return typeid(T); };
-    private:
+    
 	std::vector<std::weak_ptr<Link>> m_links;
     };
 }

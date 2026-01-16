@@ -279,19 +279,22 @@ namespace ImFlow {
         // Update and draw nodes
         // TODO: I don't like this
         draw_list->ChannelsSplit(2);
-        for (auto &node: m_nodes) { node.second->update(); }
+        for (auto &node: m_nodes) {
+		node.second->m_inf = this;
+		node.second->update();
+	}
         // Remove "toDelete" nodes
-        for (auto iter = m_nodes.begin(); iter != m_nodes.end();) {
-            if (iter->second->toDestroy())
-                iter = m_nodes.erase(iter);
-            else
-                ++iter;
-        }
+	destroyDestroyedNodes();
         draw_list->ChannelsMerge();
         for (auto &node: m_nodes) { node.second->updatePublicStatus(); }
 
         // Update and draw links
-        for (auto &l: m_links) { if (!l.expired()) l.lock()->update(); }
+        for (auto &l: m_links) {
+		if(!l.expired()){
+			l.lock()->m_inf = this;
+			l.lock()->update();
+		}
+	}
 
         // Links drop-off
         if (m_dragOut && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
@@ -345,5 +348,14 @@ namespace ImFlow {
         m_pinRecursionBlacklist.clear();
 
         m_context.end();
+    }
+
+    void ImNodeFlow::destroyDestroyedNodes(){
+        for (auto iter = m_nodes.begin(); iter != m_nodes.end();) {
+            if (iter->second->toDestroy())
+                iter = m_nodes.erase(iter);
+            else
+                ++iter;
+        }
     }
 }
