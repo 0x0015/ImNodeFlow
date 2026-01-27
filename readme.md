@@ -1,3 +1,5 @@
+NOTE: This fork makes BREAKING CHANGES from main - the biggest being is the included value propegation scheme has been completly rooted (as in my project utilizing this I applied my own tree search for processing order).
+
 # ImNodeFlow
 **Node-based editor/blueprints for ImGui**
 

@@ -423,6 +423,7 @@ namespace ImFlow
          * @return Const reference to editor's internal nodes list
          */
         std::unordered_map<NodeUID, std::shared_ptr<BaseNode>>& getNodes() { return m_nodes; }
+        const std::unordered_map<NodeUID, std::shared_ptr<BaseNode>>& getNodes() const { return m_nodes; }
 
         /**
          * @brief <BR>Get nodes count

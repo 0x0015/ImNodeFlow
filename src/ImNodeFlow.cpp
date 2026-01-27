@@ -351,11 +351,10 @@ namespace ImFlow {
     }
 
     void ImNodeFlow::destroyDestroyedNodes(){
-        for (auto iter = m_nodes.begin(); iter != m_nodes.end();) {
-            if (iter->second->toDestroy())
-                iter = m_nodes.erase(iter);
-            else
-                ++iter;
-        }
+	std::erase_if(m_nodes, [](const auto& m_node){
+		if(!m_node.second || m_node.second->toDestroy())
+			return true;
+		return false;
+	});
     }
 }
