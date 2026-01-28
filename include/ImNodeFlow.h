@@ -418,6 +418,8 @@ namespace ImFlow
          */
         const ImVec2& getScroll() { return m_context.scroll(); }
 
+	ImVec2 getScreenSpaceDelta(){ return m_context.getScreenDelta();}
+
         /**
          * @brief <BR>Get editor's list of nodes
          * @return Const reference to editor's internal nodes list
