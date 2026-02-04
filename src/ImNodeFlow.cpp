@@ -32,7 +32,8 @@ namespace ImFlow {
             m_right->deleteLink(this);
     }
 
-    Link::~Link() {
+    Link::~Link(){
+	if(!m_left) return;
         m_left->deleteLink(this);
     }
 
