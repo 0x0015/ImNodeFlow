@@ -1187,8 +1187,12 @@ namespace ImFlow
          * @brief <BR>When parent gets deleted, remove the links
          */
         ~OutPin() override {
-	    for(auto& m_link : m_links)
-		    if(!m_link.expired()) m_link.lock()->right()->deleteLink(m_link.lock().get());
+	    for(auto& m_link : m_links){
+		    if(!m_link.expired()){
+			    m_link.lock()->m_left = nullptr;//clear myself as I'm dying
+			    m_link.lock()->right()->deleteLink(m_link.lock().get());
+		    }
+	    }
         }
 
         /**
