@@ -5,30 +5,80 @@
 
 namespace ImFlow
 {
-    inline void smart_bezier(const ImVec2& p1, const ImVec2& p2, ImU32 color, float thickness)
+    // Helper to calculate bezier control points for pin-to-pin or simple segments
+    inline void calc_smart_bezier_controls(const ImVec2& p1, const ImVec2& p2, ImVec2& p11, ImVec2& p22)
     {
-        ImDrawList* dl = ImGui::GetWindowDrawList();
         float distance = sqrt(pow((p2.x - p1.x), 2.f) + pow((p2.y - p1.y), 2.f));
         float delta = distance * 0.45f;
         if (p2.x < p1.x) delta += 0.2f * (p1.x - p2.x);
-        // float vert = (p2.x < p1.x - 20.f) ? 0.062f * distance * (p2.y - p1.y) * 0.005f : 0.f;
         float vert = 0.f;
-        ImVec2 p22 = p2 - ImVec2(delta, vert);
+        p22 = p2 - ImVec2(delta, vert);
         if (p2.x < p1.x - 50.f) delta *= -1.f;
-        ImVec2 p11 = p1 + ImVec2(delta, vert);
+        p11 = p1 + ImVec2(delta, vert);
+    }
+    
+    inline void smart_bezier(const ImVec2& p1, const ImVec2& p2, ImU32 color, float thickness)
+    {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        ImVec2 p11, p22;
+        calc_smart_bezier_controls(p1, p2, p11, p22);
         dl->AddBezierCubic(p1, p11, p22, p2, color, thickness);
     }
 
     inline bool smart_bezier_collider(const ImVec2& p, const ImVec2& p1, const ImVec2& p2, float radius)
     {
+        ImVec2 p11, p22;
+        calc_smart_bezier_controls(p1, p2, p11, p22);
+        return ImProjectOnCubicBezier(p, p1, p11, p22, p2).Distance < radius;
+    }
+    
+    // Bezier with explicit tangent directions for waypoint segments
+    // tangent1: direction vector for outgoing tangent at p1 (normalized or zero)
+    // tangent2: direction vector for incoming tangent at p2 (normalized or zero)
+    inline void smart_bezier_with_tangents(const ImVec2& p1, const ImVec2& p2, 
+                                            const ImVec2& tangent1, const ImVec2& tangent2,
+                                            ImU32 color, float thickness)
+    {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
         float distance = sqrt(pow((p2.x - p1.x), 2.f) + pow((p2.y - p1.y), 2.f));
-        float delta = distance * 0.45f;
-        if (p2.x < p1.x) delta += 0.2f * (p1.x - p2.x);
-        // float vert = (p2.x < p1.x - 20.f) ? 0.062f * distance * (p2.y - p1.y) * 0.005f : 0.f;
-        float vert = 0.f;
-        ImVec2 p22 = p2 - ImVec2(delta, vert);
-        if (p2.x < p1.x - 50.f) delta *= -1.f;
-        ImVec2 p11 = p1 + ImVec2(delta, vert);
+        float controlLen = distance * 0.4f;
+        
+        // If tangents are provided, use them; otherwise fall back to horizontal
+        ImVec2 p11, p22;
+        if (tangent1.x != 0.f || tangent1.y != 0.f) {
+            p11 = p1 + ImVec2(tangent1.x * controlLen, tangent1.y * controlLen);
+        } else {
+            p11 = p1 + ImVec2(controlLen, 0.f);
+        }
+        
+        if (tangent2.x != 0.f || tangent2.y != 0.f) {
+            p22 = p2 - ImVec2(tangent2.x * controlLen, tangent2.y * controlLen);
+        } else {
+            p22 = p2 - ImVec2(controlLen, 0.f);
+        }
+        
+        dl->AddBezierCubic(p1, p11, p22, p2, color, thickness);
+    }
+    
+    inline bool smart_bezier_collider_with_tangents(const ImVec2& p, const ImVec2& p1, const ImVec2& p2,
+                                                     const ImVec2& tangent1, const ImVec2& tangent2, float radius)
+    {
+        float distance = sqrt(pow((p2.x - p1.x), 2.f) + pow((p2.y - p1.y), 2.f));
+        float controlLen = distance * 0.4f;
+        
+        ImVec2 p11, p22;
+        if (tangent1.x != 0.f || tangent1.y != 0.f) {
+            p11 = p1 + ImVec2(tangent1.x * controlLen, tangent1.y * controlLen);
+        } else {
+            p11 = p1 + ImVec2(controlLen, 0.f);
+        }
+        
+        if (tangent2.x != 0.f || tangent2.y != 0.f) {
+            p22 = p2 - ImVec2(tangent2.x * controlLen, tangent2.y * controlLen);
+        } else {
+            p22 = p2 - ImVec2(controlLen, 0.f);
+        }
+        
         return ImProjectOnCubicBezier(p, p1, p11, p22, p2).Distance < radius;
     }
 
@@ -217,6 +267,26 @@ namespace ImFlow
     // -----------------------------------------------------------------------------------------------------------------
     // PIN
 
+    inline ImVec2 Pin::getTangentDirection()
+    {
+        // Output pins: link goes OUT from the pin
+        // Input pins: link comes IN to the pin
+        // The tangent direction indicates where the bezier curve should go
+        bool isOutput = (m_type == PinType_Output);
+        
+        // Output socket on RIGHT -> link goes right -> tangent (1,0)
+        // Input socket on LEFT -> link comes from left -> tangent (1,0)
+        // For bezier control points: p22 = p2 - (tangent * controlLen)
+        // So for input in flipped mode, tangent (-1,0) gives p22 = p2 - (-controlLen, 0) = p2 + (controlLen, 0)
+        // This places control point to the RIGHT of input, making curve enter from outside
+        if (isOutput) {
+            return ImVec2(1.0f, 0.0f);
+        } else {
+            // Input: tangent points in direction link arrives from
+            return ImVec2(1.0f, 0.0f);
+        }
+    }
+
     inline void Pin::drawSocket()
     {
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
@@ -277,22 +347,22 @@ namespace ImFlow
     // IN PIN
 
     template<class T>
-    void InPin<T>::createLink(Pin *other)
+    Link* InPin<T>::createLink(Pin *other)
     {
         if (other == this || other->getType() == PinType_Input)
-            return;
+            return nullptr;
 
         if (m_parent == other->getParent() && !m_allowSelfConnection)
-            return;
+            return nullptr;
 
 	for(auto& m_link : m_links){
 		if (m_link && m_link->left() == other){
-        	    return;
+        	    return nullptr;
         	}
 	}
 
         if (!m_filter(other, this)) // Check Filter
-            return;
+            return nullptr;
 
         auto m_link = std::make_shared<Link>(other, this, (*m_inf));
 	m_links.push_back(m_link);
@@ -301,18 +371,19 @@ namespace ImFlow
 
 	if((*m_inf)->onLinkCreateHook)
 		(*m_inf)->onLinkCreateHook(m_link);
+	return m_link.get();
     }
 
     // -----------------------------------------------------------------------------------------------------------------
     // OUT PIN
 
     template<class T>
-    void OutPin<T>::createLink(ImFlow::Pin *other)
+    Link* OutPin<T>::createLink(ImFlow::Pin *other)
     {
         if (other == this || other->getType() == PinType_Output)
-            return;
+            return nullptr;
 
-        other->createLink(this);
+        return other->createLink(this);
     }
 
     template<class T>

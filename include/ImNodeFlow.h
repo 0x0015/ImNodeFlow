@@ -172,6 +172,22 @@ namespace ImFlow
     };
 
     // -----------------------------------------------------------------------------------------------------------------
+    // WAYPOINT
+
+    /**
+     * @brief A point on a link that can be moved to organize connections
+     */
+    struct Waypoint
+    {
+        ImVec2 pos;           // Position in grid coordinates (snapped)
+        ImVec2 posTarget;     // Target position for dragging (not snapped)
+        bool hovered = false;
+        bool dragged = false;
+        static constexpr float RADIUS = 6.0f;
+        static constexpr float HOVER_RADIUS = 10.0f;
+    };
+
+    // -----------------------------------------------------------------------------------------------------------------
     // LINK
 
     /**
@@ -199,6 +215,37 @@ namespace ImFlow
          * @details Draws the Link and updates Hovering and Selected status.
          */
         void update();
+
+	        /**
+         * @brief <BR>Add a waypoint at the given position
+         * @param pos Position in grid coordinates
+         * @return Index of the newly added waypoint
+         */
+        int addWaypoint(const ImVec2& pos);
+
+        /**
+         * @brief <BR>Remove a waypoint by index
+         * @param index Index of the waypoint to remove
+         */
+        void removeWaypoint(int index);
+
+        /**
+         * @brief <BR>Get all waypoints
+         * @return Reference to the vector of waypoints
+         */
+        std::vector<Waypoint>& getWaypoints() { return m_waypoints; }
+
+        /**
+         * @brief <BR>Set all waypoints at once (useful for deserialization)
+         * @param waypoints Vector of positions in grid coordinates
+         */
+        void setWaypoints(const std::vector<ImVec2>& positions);
+
+        /**
+         * @brief <BR>Check if mouse is hovering any waypoint
+         * @return Index of hovered waypoint or -1 if none
+         */
+        int getHoveredWaypoint() const;
 
         /**
          * @brief <BR>Get Left pin of the link
@@ -229,6 +276,8 @@ namespace ImFlow
         ImNodeFlow* m_inf;
         bool m_hovered = false;
         bool m_selected = false;
+	std::vector<Waypoint> m_waypoints;
+        int m_draggedWaypointIndex = -1;
     };
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -312,6 +361,8 @@ namespace ImFlow
 	std::function<void(const BaseNode*)> onNodeDestroyHook = {};
 	std::function<void(std::shared_ptr<Link>)> onLinkCreateHook = {};
 	std::function<void(const Link*)> onLinkDestroyHook = {};
+	std::function<void(Waypoint&)> onLinkWaypointCreateHook = {};
+	std::function<void(const Waypoint&)> onLinkWaypointDestroyHook = {};
 
     private:
         /**
@@ -399,6 +450,13 @@ namespace ImFlow
          */
         void consumeSingleUseClick() { m_singleUseClick = false; }
 
+	/**
+         * @brief <BR>Get mouse double-clicking status
+         * @return [TRUE] if mouse is double-clicked and double-click hasn't been consumed
+         */
+        [[nodiscard]] bool getDoubleUseClick() const { return m_doubleUseClick; }
+        void consumeDoubleUseClick() { m_doubleUseClick = false; }
+
         /**
          * @brief <BR>Get editor's name
          * @return Const reference to editor's name
@@ -483,6 +541,12 @@ namespace ImFlow
          */
         void hoveredNode(BaseNode* hovering) { m_hoveredNode = hovering; }
 
+	/**
+         * @brief <BR>Set what link is being hovered
+         * @param link Shared pointer to the hovered link
+         */
+        void hoveredLink(std::shared_ptr<Link> link) { m_hoveredLink = link; }
+
         /**
          * @brief <BR>Convert coordinates from screen to grid
          * @param p Point in screen coordinates to be converted
@@ -509,6 +573,26 @@ namespace ImFlow
          */
         bool on_free_space();
 
+	/**
+         * @brief <BR>Get the link currently being hovered by the mouse
+         * @return Weak pointer to the hovered link, or empty weak_ptr if none
+         */
+        std::weak_ptr<Link> getHoveredLink();
+
+        /**
+         * @brief <BR>Add a waypoint to a link at the given position
+         * @param link The link to add the waypoint to
+         * @param pos Position in grid coordinates
+         * @return Index of the newly created waypoint
+         */
+        int addWaypointToLink(std::shared_ptr<Link> link, const ImVec2& pos);
+
+        /**
+         * @brief <BR>Get the link that was hovered when right-click menu opened
+         * @return Shared pointer to the captured hovered link
+         */
+        std::shared_ptr<Link> getRightClickHoveredLink() { return m_hoveredLinkAux; }
+
         /**
          * @brief <BR>Get recursion blacklist for nodes
          * @return Reference to blacklist
@@ -521,6 +605,7 @@ namespace ImFlow
         ContainedContext m_context;
 
         bool m_singleUseClick = false;
+        bool m_doubleUseClick = false;
 
         std::unordered_map<NodeUID, std::shared_ptr<BaseNode>> m_nodes;
         std::vector<std::string> m_pinRecursionBlacklist;
@@ -531,11 +616,13 @@ namespace ImFlow
         Pin* m_droppedLinkLeft = nullptr;
         std::function<void(BaseNode* node)> m_rightClickPopUp;
         BaseNode* m_hoveredNodeAux = nullptr;
+	std::shared_ptr<Link> m_hoveredLinkAux;
 
         BaseNode* m_hoveredNode = nullptr;
         bool m_draggingNode = false, m_draggingNodeNext = false;
         Pin* m_hovering = nullptr;
         Pin* m_dragOut = nullptr;
+	std::weak_ptr<Link> m_hoveredLink;
 	bool m_disabled = false;
 
         InfStyler m_style;
@@ -964,7 +1051,7 @@ namespace ImFlow
          * @brief <BR>Create link between pins
          * @param other Pointer to the other pin
          */
-        virtual void createLink(Pin* other) = 0;
+        virtual Link* createLink(Pin* other) = 0;
 
         /**
          * @brief <BR>Set the reference to a link
@@ -1050,6 +1137,12 @@ namespace ImFlow
          */
         float calcWidth() { return ImGui::CalcTextSize(m_name.c_str()).x; }
 
+	/**
+         * @brief <BR>Get tangent direction for link rendering
+         * @return Normalized direction vector for bezier tangent (accounts for flip)
+         */
+        ImVec2 getTangentDirection();
+
         /**
          * @brief <BR>Set pin's position
          * @param pos Position in screen coordinates
@@ -1101,7 +1194,7 @@ namespace ImFlow
          * @brief <BR>Create link between pins
          * @param other Pointer to the other pin
          */
-        void createLink(Pin* other) override;
+        Link* createLink(Pin* other) override;
 
         /**
         * @brief <BR>Delete the link connected to the pin
@@ -1199,7 +1292,7 @@ namespace ImFlow
          * @brief <BR>Create link between pins
          * @param other Pointer to the other pin
          */
-        void createLink(Pin* other) override;
+        Link* createLink(Pin* other) override;
 
         /**
          * @brief <BR>Add a connected link to the internal list
