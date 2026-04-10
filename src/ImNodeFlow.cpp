@@ -288,11 +288,11 @@ namespace ImFlow {
         for (auto& wp : m_waypoints) {
             ImVec2 screenPos = m_inf->grid2screen(wp.pos);
             float radius = Waypoint::RADIUS;
-            if (wp.hovered || wp.dragged) {
+            if (wp.hovered || wp.dragged || wp.selected) {
                 radius = Waypoint::HOVER_RADIUS;
             }
             draw_list->AddCircleFilled(screenPos, radius, color);
-            if (wp.hovered || wp.dragged) {
+            if (wp.hovered || wp.dragged || wp.selected) {
                 draw_list->AddCircle(screenPos, radius, outlineColor, 12, 2.0f);
             }
         }
@@ -434,6 +434,10 @@ namespace ImFlow {
         if (isHovered()) {
             m_inf->hoveredNode(this);
             if (mouseClickState) {
+		// Selecting a node should deselect any selected group (exclusive selection)
+                m_inf->clearGroupSelection();
+		// also deselect any waypoints
+		m_inf->clearWaypointSelection();
                 selected(true);
                 m_inf->consumeSingleUseClick();
             }
@@ -565,6 +569,156 @@ namespace ImFlow {
                 draw_list->AddLine(ImVec2(0.0f, y), ImVec2(gridSize.x, y), m_style.colors.subGrid);
         }
 
+	// Update and draw groups (background)
+        m_hoveredGroup = nullptr;
+        for (auto& [gid, group] : m_groups) {
+            if (group.nodeMembers.empty()) continue;
+            
+            // Calculate bounding box of all member nodes
+            ImVec2 minPos(FLT_MAX, FLT_MAX);
+            ImVec2 maxPos(-FLT_MAX, -FLT_MAX);
+            bool hasValidNodes = false;
+            
+            for (NodeUID nodeUid : group.nodeMembers) {
+                auto it = m_nodes.find(nodeUid);
+                if (it == m_nodes.end()) continue;
+                
+                hasValidNodes = true;
+                ImVec2 nodePos = it->second->getPos();
+                ImVec2 nodeSize = it->second->getSize();
+                
+                minPos.x = std::min(minPos.x, nodePos.x);
+                minPos.y = std::min(minPos.y, nodePos.y);
+                maxPos.x = std::max(maxPos.x, nodePos.x + nodeSize.x);
+                maxPos.y = std::max(maxPos.y, nodePos.y + nodeSize.y);
+            }
+
+	    for (const auto& waypoint : group.waypointMembers) {
+		if(!waypoint.link.expired()){
+			auto& waypoints = waypoint.link.lock()->getWaypoints();
+			if(waypoint.waypointNumber < waypoints.size()){
+				ImVec2 wpPos = waypoints[waypoint.waypointNumber].pos;
+				minPos.x = std::min(minPos.x, wpPos.x);
+				minPos.y = std::min(minPos.y, wpPos.y);
+				maxPos.x = std::max(maxPos.x, wpPos.x);
+				maxPos.y = std::max(maxPos.y, wpPos.y);
+			}
+		}
+	    }
+            
+            if (!hasValidNodes) continue;
+            
+            // Add padding
+            minPos.x -= group.padding;
+            minPos.y -= group.padding + 20; // Extra space for title
+            maxPos.x += group.padding;
+            maxPos.y += group.padding;
+            
+            // Convert to screen coordinates
+            ImVec2 screenMin = grid2screen(minPos);
+            ImVec2 screenMax = grid2screen(maxPos);
+            
+            // Check if hovered
+            ImVec2 mousePos = ImGui::GetMousePos();
+            group.hovered = (mousePos.x >= screenMin.x && mousePos.x <= screenMax.x &&
+                            mousePos.y >= screenMin.y && mousePos.y <= screenMax.y);
+            if (group.hovered) {
+                m_hoveredGroup = &group;
+            }
+            
+            // Draw group background
+            ImU32 bgColor = group.color;
+            ImU32 borderCol = group.borderColor;
+            if (group.selected) {
+                borderCol = IM_COL32(255, 200, 100, 255);
+            } else if (group.hovered) {
+                bgColor = IM_COL32(
+                    (group.color & 0xFF),
+                    ((group.color >> 8) & 0xFF),
+                    ((group.color >> 16) & 0xFF),
+                    std::min(255, (int)((group.color >> 24) & 0xFF) + 30)
+                );
+            }
+            
+            draw_list->AddRectFilled(screenMin, screenMax, bgColor, 8.0f);
+            draw_list->AddRect(screenMin, screenMax, borderCol, 8.0f, 0, 2.0f);
+            
+            // Draw group name
+            ImVec2 textPos(screenMin.x + 8, screenMin.y + 4);
+            draw_list->AddText(textPos, IM_COL32(255, 255, 255, 200), group.name.c_str());
+            
+	    bool nodeIsSelected = false;
+	    for(const auto& [oid, node] : m_nodes){
+		if(node->isSelected()){
+			nodeIsSelected = true;
+			break;
+		}
+	    }
+
+	    bool waypointIsHovered = false;
+	    for(const auto& link : m_links){
+		if(!link.expired())
+			for(const auto& wp : link.lock()->m_waypoints){
+				if(wp.dragged || wp.hovered || wp.selected){
+					waypointIsHovered = true;
+					break;
+				}
+			}
+	    }
+
+            // Handle group dragging
+            if (group.hovered && !m_hoveredNode && !m_hovering && !nodeIsSelected && !waypointIsHovered && !m_draggingNode && !m_draggingNodeNext && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                group.dragging = true;
+                group.dragOffset = ImVec2(mousePos.x - screenMin.x, mousePos.y - screenMin.y);
+                m_selectedGroup = &group;
+		// Selecting a group should deselect all nodes (exclusive selection)
+                for (auto& [nid, node] : m_nodes) {
+                    node->selected(false);
+                }
+		clearWaypointSelection();//also deselect all waypoints
+                // Deselect other groups
+                for (auto& [oid, other] : m_groups) {
+                    if (oid != gid) other.selected = false;
+                }
+                group.selected = true;
+            }
+            
+            if (group.dragging) {
+		if(nodeIsSelected){
+			group.dragging = false;
+		}
+                if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                    // Calculate delta in grid coordinates
+                    ImVec2 delta = getScreenSpaceDelta();
+                    
+                    // Move all member nodes
+                    for (NodeUID nodeUid : group.nodeMembers) {
+                        auto it = m_nodes.find(nodeUid);
+                        if (it != m_nodes.end()) {
+                            ImVec2 nodePos = it->second->getPos();
+                            it->second->setPos(nodePos + screen2grid(delta) - screen2grid(ImVec2(0,0)));
+                        }
+                    }
+		    for (const auto& waypoint : group.waypointMembers) {
+			if(!waypoint.link.expired()){
+				auto& waypoints = waypoint.link.lock()->getWaypoints();
+				if(waypoint.waypointNumber < waypoints.size()){
+					ImVec2 wpPos = waypoints[waypoint.waypointNumber].pos;
+					waypoints[waypoint.waypointNumber].pos = wpPos + screen2grid(delta) - screen2grid(ImVec2(0,0));
+				}
+			}
+                    }
+                } else {
+                    group.dragging = false;
+                }
+            }
+        }
+        
+        // Delete selected group on Delete key
+        if (m_selectedGroup && ImGui::IsKeyPressed(ImGuiKey_Delete, false) && !m_hoveredNode) {
+            deleteGroup(m_selectedGroup->uid);
+        }
+
         // Update and draw nodes
         // TODO: I don't like this
         draw_list->ChannelsSplit(2);
@@ -613,6 +767,68 @@ namespace ImFlow {
                 m_dragOut = nullptr;
         }
 
+	// Box selection
+	// Note: groups are not considered by on_free_space()
+        if (on_free_space() && !m_hoveredGroup && !m_draggingNode && !m_dragOut && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsWindowHovered()) {
+            m_boxSelecting = true;
+            m_boxSelectStart = ImGui::GetMousePos();
+            // Deselect all nodes if not holding Ctrl
+            if (!ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && !ImGui::IsKeyDown(ImGuiKey_RightCtrl)) {
+                for (auto& node : m_nodes) {
+                    node.second->selected(false);
+                }
+		// Also deselect any selected group when clicking on empty space
+                if (m_selectedGroup) {
+                    m_selectedGroup->selected = false;
+                    m_selectedGroup = nullptr;
+                }
+		//also all waypoints
+		clearWaypointSelection();
+            }
+        }
+
+        if (m_boxSelecting) {
+            ImVec2 boxEnd = ImGui::GetMousePos();
+            ImVec2 boxMin = ImVec2(std::min(m_boxSelectStart.x, boxEnd.x), std::min(m_boxSelectStart.y, boxEnd.y));
+            ImVec2 boxMax = ImVec2(std::max(m_boxSelectStart.x, boxEnd.x), std::max(m_boxSelectStart.y, boxEnd.y));
+
+            // Draw selection rectangle
+            draw_list->AddRectFilled(boxMin, boxMax, m_boxSelectColor);
+            draw_list->AddRect(boxMin, boxMax, m_boxSelectBorderColor, 0.0f, 0, 1.5f);
+
+            // Select nodes that intersect with the box
+            for (auto& node : m_nodes) {
+                ImVec2 nodePos = grid2screen(node.second->getPos());
+                ImVec2 nodeSize = node.second->getSize() * m_context.scale();
+                ImVec2 nodeMin = nodePos;
+                ImVec2 nodeMax = nodePos + nodeSize;
+
+                // Check if node intersects with selection box
+                bool intersects = !(nodeMax.x < boxMin.x || nodeMin.x > boxMax.x ||
+                                   nodeMax.y < boxMin.y || nodeMin.y > boxMax.y);
+
+                if (intersects) {
+                    node.second->selected(true);
+                }
+            }
+
+	    //select all waypoints inside the selection
+	    for(auto& link : m_links){
+		if(!link.expired()){
+			for(auto& wp : link.lock()->m_waypoints){
+				auto wpPos = grid2screen(wp.pos);
+				bool inside = wpPos.x > boxMin.x && wpPos.x < boxMax.x && wpPos.y > boxMin.y && wpPos.y < boxMax.y;
+				if(inside)
+					wp.selected = true;
+			}
+		}
+	    }
+
+            if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+                m_boxSelecting = false;
+            }
+        }
+
 	// Double clicking on link adds waypoint
 	if(m_doubleUseClick && ImGui::IsWindowHovered() && getHoveredLink().lock()){
 		getHoveredLink().lock()->addWaypoint(screen2grid(ImGui::GetMousePos()));
@@ -642,6 +858,11 @@ namespace ImFlow {
         // Clearing recursion blacklist
         m_pinRecursionBlacklist.clear();
 
+	// Ctrl+G to create group from selection
+	if((createGroupHotkeyPressed ? createGroupHotkeyPressed() : ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && ImGui::IsKeyPressed(ImGuiKey_G, false)) && ImGui::IsWindowFocused()){
+            createGroupFromSelection();
+        }
+
         m_context.end();
     }
 
@@ -651,5 +872,92 @@ namespace ImFlow {
 			return true;
 		return false;
 	});
+    }
+
+    
+    // ===== GROUP MANAGEMENT IMPLEMENTATION =====
+
+    NodeGroup::GroupUID ImNodeFlow::createGroupFromSelection(const std::string& name)
+    {
+        std::set<NodeUID> selectedNodes;
+        for (auto& [uid, node] : m_nodes) {
+            if (node->isSelected()) {
+                selectedNodes.insert(uid);
+            }
+        }
+        
+        if (selectedNodes.empty()) {
+            return 0;
+        }
+        
+        // Remove nodes from any existing groups
+        for (NodeUID nodeUid : selectedNodes) {
+            removeNodeFromGroup(nodeUid);
+        }
+        
+        NodeGroup group;
+        group.uid = m_nextGroupUid++;
+        group.name = name;
+        group.nodeMembers = selectedNodes;
+	group.waypointMembers.clear();
+	for(auto link : m_links){
+		if(!link.expired()){
+			for(unsigned int i=0;i<link.lock()->m_waypoints.size();i++){
+				if(link.lock()->m_waypoints[i].selected){
+					group.waypointMembers.insert({link, i});
+				}
+			}
+		}
+	}
+        
+        m_groups[group.uid] = group;
+        return group.uid;
+    }
+
+    void ImNodeFlow::addNodeToGroup(NodeGroup::GroupUID groupUid, NodeUID nodeUid)
+    {
+        auto it = m_groups.find(groupUid);
+        if (it == m_groups.end()) return;
+        
+        // Remove from any existing group first
+        removeNodeFromGroup(nodeUid);
+        
+        it->second.nodeMembers.insert(nodeUid);
+    }
+
+    void ImNodeFlow::removeNodeFromGroup(NodeUID nodeUid)
+    {
+        for (auto& [gid, group] : m_groups) {
+            group.nodeMembers.erase(nodeUid);
+        }
+        // Clean up empty groups
+        for (auto it = m_groups.begin(); it != m_groups.end();) {
+            if (it->second.nodeMembers.empty()) {
+                it = m_groups.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    void ImNodeFlow::deleteGroup(NodeGroup::GroupUID groupUid)
+    {
+        m_groups.erase(groupUid);
+        if (m_selectedGroup && m_selectedGroup->uid == groupUid) {
+            m_selectedGroup = nullptr;
+        }
+        if (m_hoveredGroup && m_hoveredGroup->uid == groupUid) {
+            m_hoveredGroup = nullptr;
+        }
+    }
+
+    NodeGroup* ImNodeFlow::findGroupForNode(NodeUID nodeUid)
+    {
+        for (auto& [gid, group] : m_groups) {
+            if (group.nodeMembers.count(nodeUid) > 0) {
+                return &group;
+            }
+        }
+        return nullptr;
     }
 }

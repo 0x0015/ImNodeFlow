@@ -8,6 +8,7 @@
 #include <memory>
 #include <functional>
 #include <unordered_map>
+#include <set>
 #include <imgui.h>
 #include "../src/context_wrapper.h"
 
@@ -183,6 +184,7 @@ namespace ImFlow
         ImVec2 posTarget;     // Target position for dragging (not snapped)
         bool hovered = false;
         bool dragged = false;
+	bool selected = false;
         static constexpr float RADIUS = 6.0f;
         static constexpr float HOVER_RADIUS = 10.0f;
     };
@@ -228,6 +230,11 @@ namespace ImFlow
          * @param index Index of the waypoint to remove
          */
         void removeWaypoint(int index);
+
+	void unselectWaypoints(){
+		for(auto& wp : m_waypoints)
+			wp.selected = false;
+	}
 
         /**
          * @brief <BR>Get all waypoints
@@ -307,6 +314,40 @@ namespace ImFlow
         float grid_subdivisions = 5.f;
         /// @brief ImNodeFlow colors
         InfColors colors;
+    };
+
+    /**
+     * @brief A group of nodes that can be moved together
+     */
+    struct NodeGroup
+    {
+        using GroupUID = uint64_t;
+        
+        GroupUID uid{0};
+        std::string name{"Group"};
+        std::string comment;
+        ImU32 color{IM_COL32(100, 100, 200, 60)};
+        ImU32 borderColor{IM_COL32(100, 100, 200, 200)};
+	struct groupMember{
+		NodeUID uid;
+		std::vector<unsigned int> memberWaypoints;
+	};
+        std::set<NodeUID> nodeMembers;
+	struct Waypoint_info{
+		std::weak_ptr<Link> link;
+		unsigned int waypointNumber;
+		bool operator<(const Waypoint_info& other) const{
+			if(link.lock() != other.link.lock()) return link.lock() < other.link.lock();
+			return waypointNumber < other.waypointNumber;
+		}
+	};
+	std::set<Waypoint_info> waypointMembers;
+        float padding{20.0f};
+        
+        bool dragging{false};
+        bool hovered{false};
+        bool selected{false};
+        ImVec2 dragOffset{0, 0};
     };
 
     /**
@@ -600,6 +641,75 @@ namespace ImFlow
          */
         std::vector<std::string>& get_recursion_blacklist() { return m_pinRecursionBlacklist; }
 
+        // ===== GROUP MANAGEMENT =====
+        
+        /**
+         * @brief Create a new group from currently selected nodes
+         * @param name Name of the group
+         * @return UID of the created group, or 0 if no nodes selected
+         */
+        NodeGroup::GroupUID createGroupFromSelection(const std::string& name = "Group");
+        
+        /**
+         * @brief Add a node to an existing group
+         * @param groupUid UID of the group
+         * @param nodeUid UID of the node to add
+         */
+        void addNodeToGroup(NodeGroup::GroupUID groupUid, NodeUID nodeUid);
+        
+        /**
+         * @brief Remove a node from its group
+         * @param nodeUid UID of the node to remove
+         */
+        void removeNodeFromGroup(NodeUID nodeUid);
+        
+        /**
+         * @brief Delete a group (nodes remain)
+         * @param groupUid UID of the group to delete
+         */
+        void deleteGroup(NodeGroup::GroupUID groupUid);
+        
+        /**
+         * @brief Get all groups
+         * @return Reference to map of groups
+         */
+        std::unordered_map<NodeGroup::GroupUID, NodeGroup>& getGroups() { return m_groups; }
+        const std::unordered_map<NodeGroup::GroupUID, NodeGroup>& getGroups() const { return m_groups; }
+       
+	NodeGroup::GroupUID getNextGroupUid() const { return m_nextGroupUid; }
+        void setNextGroupUid(NodeGroup::GroupUID uid) { m_nextGroupUid = uid; }
+
+        /**
+         * @brief Find which group a node belongs to
+         * @param nodeUid UID of the node
+         * @return Pointer to group, or nullptr if not in any group
+         */
+        NodeGroup* findGroupForNode(NodeUID nodeUid);
+        
+        /**
+         * @brief Get selected group
+         * @return Pointer to selected group or nullptr
+         */
+        NodeGroup* getSelectedGroup() { return m_selectedGroup; }
+
+	void clearGroupSelection()
+        {
+            if (m_selectedGroup)
+            {
+                m_selectedGroup->selected = false;
+                m_selectedGroup = nullptr;
+            }
+        }
+
+	void clearWaypointSelection(){
+		for(auto& link : m_links){
+			if(!link.expired()){
+				for(auto& wp : link.lock()->m_waypoints)
+					wp.selected = false;
+			}
+		}
+	}
+
 	bool& getDisabled(){return m_disabled;}
     
         std::string m_name;
@@ -627,6 +737,18 @@ namespace ImFlow
 	bool m_disabled = false;
 
         InfStyler m_style;
+
+	bool m_boxSelecting = false;
+        ImVec2 m_boxSelectStart = ImVec2(0, 0);
+        ImU32 m_boxSelectColor = IM_COL32(100, 150, 255, 50);
+        ImU32 m_boxSelectBorderColor = IM_COL32(100, 150, 255, 200);
+
+	// Groups
+        std::unordered_map<NodeGroup::GroupUID, NodeGroup> m_groups;
+        NodeGroup::GroupUID m_nextGroupUid = 1;
+        NodeGroup* m_selectedGroup = nullptr;
+        NodeGroup* m_hoveredGroup = nullptr;
+	std::function<bool()> createGroupHotkeyPressed;
     };
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -1052,7 +1174,7 @@ namespace ImFlow
          * @brief <BR>Create link between pins
          * @param other Pointer to the other pin
          */
-        virtual Link* createLink(Pin* other) = 0;
+        virtual std::weak_ptr<Link> createLink(Pin* other) = 0;
 
         /**
          * @brief <BR>Set the reference to a link
@@ -1195,7 +1317,7 @@ namespace ImFlow
          * @brief <BR>Create link between pins
          * @param other Pointer to the other pin
          */
-        Link* createLink(Pin* other) override;
+	std::weak_ptr<Link> createLink(Pin* other) override;
 
         /**
         * @brief <BR>Delete the link connected to the pin
@@ -1293,7 +1415,7 @@ namespace ImFlow
          * @brief <BR>Create link between pins
          * @param other Pointer to the other pin
          */
-        Link* createLink(Pin* other) override;
+	std::weak_ptr<Link> createLink(Pin* other) override;
 
         /**
          * @brief <BR>Add a connected link to the internal list

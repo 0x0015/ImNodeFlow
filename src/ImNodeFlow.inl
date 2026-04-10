@@ -347,41 +347,41 @@ namespace ImFlow
     // IN PIN
 
     template<class T>
-    Link* InPin<T>::createLink(Pin *other)
+    std::weak_ptr<Link> InPin<T>::createLink(Pin *other)
     {
         if (other == this || other->getType() == PinType_Input)
-            return nullptr;
+            return {};
 
         if (m_parent == other->getParent() && !m_allowSelfConnection)
-            return nullptr;
+            return {};
 
 	for(auto& m_link : m_links){
 		if (m_link && m_link->left() == other){
-        	    return nullptr;
+        	    return {};
         	}
 	}
 
         if (!m_filter(other, this)) // Check Filter
-            return nullptr;
+            return {};
 
-        auto m_link = std::make_shared<Link>(other, this, (*m_inf));
+	std::shared_ptr<Link> m_link = std::make_shared<Link>(other, this, (*m_inf));
 	m_links.push_back(m_link);
         other->addLink(m_link);
         (*m_inf)->addLink(m_link);
 
 	if((*m_inf)->onLinkCreateHook)
 		(*m_inf)->onLinkCreateHook(m_link);
-	return m_link.get();
+	return m_link;
     }
 
     // -----------------------------------------------------------------------------------------------------------------
     // OUT PIN
 
     template<class T>
-    Link* OutPin<T>::createLink(ImFlow::Pin *other)
+    std::weak_ptr<Link> OutPin<T>::createLink(ImFlow::Pin *other)
     {
         if (other == this || other->getType() == PinType_Output)
-            return nullptr;
+            return {};
 
         return other->createLink(this);
     }
