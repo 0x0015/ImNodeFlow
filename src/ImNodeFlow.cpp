@@ -101,6 +101,17 @@ namespace ImFlow {
         return -1;
     }
 
+    void ImNodeFlow::emplaceNode(const ImVec2& pos, const std::shared_ptr<BaseNode>& n){
+	n->setPos(pos);
+        n->setHandler(this);
+        if (!n->getStyle())
+            n->setStyle(NodeStyle::cyan());
+
+        auto uid = reinterpret_cast<uintptr_t>(n.get());
+        n->setUID(uid);
+        m_nodes[uid] = n;
+    }
+
     void Link::update() {
         // start/end from pinPoint() are in screen coordinates - convert to grid
         ImVec2 startScreen = m_left->pinPoint();

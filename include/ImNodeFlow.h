@@ -356,6 +356,7 @@ namespace ImFlow
          */
         template<typename T, typename... Params>
         std::shared_ptr<T> addNode(const ImVec2& pos, Params&&... args);
+	void emplaceNode(const ImVec2& pos, const std::shared_ptr<BaseNode>& node);
 
 	std::function<void(std::shared_ptr<BaseNode>)> onNodeCreateHook = {};
 	std::function<void(const BaseNode*)> onNodeDestroyHook = {};
