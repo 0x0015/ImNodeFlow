@@ -164,6 +164,8 @@ namespace ImFlow
     public:
         /// @brief <BR>Default cyan style
         static std::shared_ptr<NodeStyle> cyan() { return std::make_shared<NodeStyle>(IM_COL32(71,142,173,255), ImColor(233,241,244,255), 6.5f); }
+        /// @brief <BR>Default blue style
+        static std::shared_ptr<NodeStyle> blue() { return std::make_shared<NodeStyle>(IM_COL32(90,117,191,255), ImColor(233,241,244,255), 3.5f); }
         /// @brief <BR>Default green style
         static std::shared_ptr<NodeStyle> green() { return std::make_shared<NodeStyle>(IM_COL32(90,191,93,255), ImColor(233,241,244,255), 3.5f); }
         /// @brief <BR>Default red style
