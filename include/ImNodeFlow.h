@@ -9,6 +9,7 @@
 #include <functional>
 #include <unordered_map>
 #include <set>
+#include <cstdint>
 #include <imgui.h>
 #include "../src/context_wrapper.h"
 
